@@ -16,7 +16,7 @@ export async function ownerRoutes(fastify: FastifyInstance) {
         type: 'object',
         required: ['agentId'],
         properties: {
-          agentId: { type: 'string', format: 'uuid' },
+          agentId: { type: 'string', pattern: '^[0-9a-f]{64}$' },  // SHA256 hash
         },
       },
     },
