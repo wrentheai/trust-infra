@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trust Infrastructure Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -67,7 +69,10 @@
       padding: 16px;
       margin-bottom: 12px;
     }
+    .memory.encrypted { border-color: #60a5fa; }
+    .memory.decrypted { border-color: #4ade80; }
     .memory-content { font-size: 16px; color: #fff; margin-bottom: 12px; line-height: 1.5; }
+    .memory-content.encrypted-text { color: #888; font-style: italic; }
     .memory-meta { display: flex; gap: 16px; flex-wrap: wrap; }
     .memory-tag {
       background: #2a2a2a;
@@ -79,6 +84,8 @@
     .memory-tag.kind { background: #1a3d1a; color: #4ade80; }
     .memory-tag.subject { background: #1a2d4d; color: #60a5fa; }
     .memory-tag.correction { background: #4d2d1a; color: #f59e0b; }
+    .memory-tag.encrypted { background: #2d1a4d; color: #a78bfa; }
+    .memory-tag.decrypted { background: #1a4d2d; color: #4ade80; }
     .empty-state {
       text-align: center;
       padding: 40px;
@@ -116,6 +123,81 @@
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     .wren-highlight { border-color: #60a5fa; }
     .wren-highlight .agent-name { color: #60a5fa; }
+    
+    /* Owner Mode Styles */
+    .owner-panel {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    .owner-panel h3 {
+      color: #e94560;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .owner-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .owner-status-badge {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .owner-status-badge.locked { background: #4d1a1a; color: #f87171; }
+    .owner-status-badge.unlocked { background: #1a4d1a; color: #4ade80; }
+    .key-input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .key-input {
+      flex: 1;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .key-input:focus { outline: none; border-color: #60a5fa; }
+    .key-btn {
+      background: #e94560;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .key-btn:hover { background: #ff6b6b; }
+    .key-btn.clear { background: #333; }
+    .key-btn.clear:hover { background: #444; }
+    .owner-warning {
+      font-size: 11px;
+      color: #888;
+      margin-top: 8px;
+    }
+    .decrypt-stats {
+      display: flex;
+      gap: 24px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #333;
+    }
+    .decrypt-stat {
+      text-align: center;
+    }
+    .decrypt-stat-value { font-size: 24px; font-weight: bold; color: #4ade80; }
+    .decrypt-stat-label { font-size: 11px; color: #888; }
   </style>
 </head>
 <body>
@@ -125,6 +207,31 @@
       <p class="subtitle">Cryptographic audit trail for AI agents</p>
     </div>
     <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+
+  <!-- Owner Mode Panel -->
+  <div class="owner-panel">
+    <h3>🔑 Owner Mode</h3>
+    <div class="owner-status">
+      <span id="owner-status-badge" class="owner-status-badge locked">🔒 Locked</span>
+      <span id="owner-status-text" style="color: #888; font-size: 13px;">Enter your secret key to decrypt private memories</span>
+    </div>
+    <div class="key-input-group">
+      <input type="password" id="secret-key-input" class="key-input" placeholder="Paste your secret key (base64)..." />
+      <button class="key-btn" onclick="unlockOwnerMode()">Unlock</button>
+      <button class="key-btn clear" onclick="lockOwnerMode()">Clear</button>
+    </div>
+    <p class="owner-warning">⚠️ Your key is stored in browser memory only. Never share your secret key.</p>
+    <div id="decrypt-stats" class="decrypt-stats" style="display: none;">
+      <div class="decrypt-stat">
+        <div class="decrypt-stat-value" id="decrypted-count">0</div>
+        <div class="decrypt-stat-label">Decrypted</div>
+      </div>
+      <div class="decrypt-stat">
+        <div class="decrypt-stat-value" id="encrypted-count">0</div>
+        <div class="decrypt-stat-label">Encrypted Total</div>
+      </div>
+    </div>
   </div>
 
   <div class="grid">
@@ -164,6 +271,82 @@
 
   <script>
     const API_BASE = 'https://trust-infra.fly.dev';
+    let ownerSecretKey = null;
+
+    // Decryption function
+    function decryptContent(ciphertext, nonce, secretKey) {
+      try {
+        const secretKeyBytes = nacl.util.decodeBase64(secretKey);
+        const combined = nacl.util.decodeBase64(ciphertext);
+        const nonceBytes = nacl.util.decodeBase64(nonce);
+        
+        // Extract ephemeral public key and ciphertext
+        const ephemeralPublicKey = combined.slice(0, nacl.box.publicKeyLength);
+        const encryptedData = combined.slice(nacl.box.publicKeyLength);
+        
+        // Decrypt
+        const messageBytes = nacl.box.open(
+          encryptedData,
+          nonceBytes,
+          ephemeralPublicKey,
+          secretKeyBytes
+        );
+        
+        if (!messageBytes) {
+          return null;
+        }
+        
+        return nacl.util.encodeUTF8(messageBytes);
+      } catch (e) {
+        console.error('Decryption failed:', e);
+        return null;
+      }
+    }
+
+    function unlockOwnerMode() {
+      const input = document.getElementById('secret-key-input');
+      const key = input.value.trim();
+      
+      if (!key) {
+        alert('Please enter your secret key');
+        return;
+      }
+      
+      // Test if it's a valid base64 key
+      try {
+        const decoded = nacl.util.decodeBase64(key);
+        if (decoded.length !== 32) {
+          alert('Invalid key length. Expected 32 bytes.');
+          return;
+        }
+      } catch (e) {
+        alert('Invalid base64 encoding');
+        return;
+      }
+      
+      ownerSecretKey = key;
+      document.getElementById('owner-status-badge').className = 'owner-status-badge unlocked';
+      document.getElementById('owner-status-badge').textContent = '🔓 Unlocked';
+      document.getElementById('owner-status-text').textContent = 'Decrypting private memories...';
+      document.getElementById('decrypt-stats').style.display = 'flex';
+      input.value = '';
+      input.placeholder = '••••••••••••••••••••••••••••••••';
+      
+      // Reload memories with decryption
+      loadMemories();
+    }
+
+    function lockOwnerMode() {
+      ownerSecretKey = null;
+      document.getElementById('owner-status-badge').className = 'owner-status-badge locked';
+      document.getElementById('owner-status-badge').textContent = '🔒 Locked';
+      document.getElementById('owner-status-text').textContent = 'Enter your secret key to decrypt private memories';
+      document.getElementById('decrypt-stats').style.display = 'none';
+      document.getElementById('secret-key-input').placeholder = 'Paste your secret key (base64)...';
+      
+      // Reload memories without decryption
+      loadMemories();
+    }
 
     async function loadHealth() {
       try {
@@ -227,7 +410,7 @@
       try {
         const res = await fetch(`${API_BASE}/api/events?limit=20`);
         const data = await res.json();
-        document.getElementById('event-count').textContent = data.events?.length || 0;
+        document.getElementById('event-count').textContent = data.total || data.events?.length || 0;
         
         const container = document.getElementById('events-list');
         if (!data.events || data.events.length === 0) {
@@ -273,25 +456,60 @@
           return;
         }
         
+        let encryptedCount = 0;
+        let decryptedCount = 0;
+        
         container.innerHTML = '';
         for (const memory of memories) {
           const payload = memory.payload || {};
           const div = document.createElement('div');
-          div.className = 'memory';
+          
+          const isEncrypted = payload.encrypted === true;
+          let content = payload.content || 'No content';
+          let decrypted = false;
+          
+          if (isEncrypted) {
+            encryptedCount++;
+            if (ownerSecretKey && payload.ciphertext && payload.nonce) {
+              const decryptedContent = decryptContent(payload.ciphertext, payload.nonce, ownerSecretKey);
+              if (decryptedContent) {
+                content = decryptedContent;
+                decrypted = true;
+                decryptedCount++;
+              }
+            }
+          }
+          
+          div.className = `memory ${isEncrypted ? (decrypted ? 'decrypted' : 'encrypted') : ''}`;
           
           const kindClass = payload.kind === 'correction' ? 'correction' : 'kind';
-          const supersedes = payload.supersedes ? `<span class="memory-tag correction">supersedes: ${payload.supersedes.slice(0, 8)}...</span>` : '';
+          const supersedes = payload.supersedes ? `<span class="memory-tag correction">supersedes: ${payload.supersedes}</span>` : '';
+          const encryptionTag = isEncrypted 
+            ? (decrypted 
+                ? '<span class="memory-tag decrypted">🔓 decrypted</span>' 
+                : '<span class="memory-tag encrypted">🔐 encrypted</span>')
+            : '';
           
           div.innerHTML = `
-            <div class="memory-content">"${payload.content || 'No content'}"</div>
+            <div class="memory-content ${isEncrypted && !decrypted ? 'encrypted-text' : ''}">"${content}"</div>
             <div class="memory-meta">
               <span class="memory-tag ${kindClass}">${payload.kind || 'unknown'}</span>
               ${payload.subject ? `<span class="memory-tag subject">about: ${payload.subject}</span>` : ''}
+              ${encryptionTag}
               ${supersedes}
               <span class="memory-tag">${new Date(memory.timestamp).toLocaleString()}</span>
             </div>
           `;
           container.appendChild(div);
+        }
+        
+        // Update stats
+        document.getElementById('encrypted-count').textContent = encryptedCount;
+        document.getElementById('decrypted-count').textContent = decryptedCount;
+        
+        if (ownerSecretKey) {
+          document.getElementById('owner-status-text').textContent = 
+            `Decrypted ${decryptedCount} of ${encryptedCount} encrypted memories`;
         }
       } catch (e) {
         document.getElementById('memories-list').innerHTML = `<p class="error">Error loading memories: ${e.message}</p>`;
