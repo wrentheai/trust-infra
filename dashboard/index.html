@@ -60,6 +60,49 @@
     .event-agent { font-size: 11px; color: #888; font-family: monospace; }
     .loading { color: #666; font-style: italic; }
     .error { color: #f87171; }
+    .memory {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .memory-content { font-size: 16px; color: #fff; margin-bottom: 12px; line-height: 1.5; }
+    .memory-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+    .memory-tag {
+      background: #2a2a2a;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #888;
+    }
+    .memory-tag.kind { background: #1a3d1a; color: #4ade80; }
+    .memory-tag.subject { background: #1a2d4d; color: #60a5fa; }
+    .memory-tag.correction { background: #4d2d1a; color: #f59e0b; }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .tab {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #888;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .tab:hover { background: #2a2a2a; }
+    .tab.active { background: #333; color: #fff; border-color: #60a5fa; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
     .refresh-btn {
       background: #333;
       color: #fff;
@@ -105,13 +148,22 @@
   <h2 style="color: #fff; margin-bottom: 16px;">Agents</h2>
   <div id="agents-list"><p class="loading">Loading agents...</p></div>
 
-  <div class="events">
-    <h2 style="color: #fff; margin-bottom: 16px;">Recent Events</h2>
+  <h2 style="color: #fff; margin-bottom: 16px;">Memories & Events</h2>
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('memories')">🧠 Memories</button>
+    <button class="tab" onclick="showTab('events')">📋 All Events</button>
+  </div>
+
+  <div id="memories-tab" class="tab-content active">
+    <div id="memories-list"><p class="loading">Loading memories...</p></div>
+  </div>
+
+  <div id="events-tab" class="tab-content">
     <div id="events-list"><p class="loading">Loading events...</p></div>
   </div>
 
   <script>
-    const API_BASE = 'https://trust-api.whalescope.app';
+    const API_BASE = 'https://trust-infra.fly.dev';
 
     async function loadHealth() {
       try {
@@ -201,10 +253,66 @@
       }
     }
 
+    async function loadMemories() {
+      try {
+        const res = await fetch(`${API_BASE}/api/events?limit=100`);
+        const data = await res.json();
+        
+        // Filter for memory events
+        const memories = (data.events || []).filter(e => e.eventType === 'memory_created');
+        
+        const container = document.getElementById('memories-list');
+        if (memories.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">🧠</div>
+              <p>No memories logged yet</p>
+              <p style="font-size: 12px; margin-top: 8px;">Facts and corrections will appear here once logged</p>
+            </div>
+          `;
+          return;
+        }
+        
+        container.innerHTML = '';
+        for (const memory of memories) {
+          const payload = memory.payload || {};
+          const div = document.createElement('div');
+          div.className = 'memory';
+          
+          const kindClass = payload.kind === 'correction' ? 'correction' : 'kind';
+          const supersedes = payload.supersedes ? `<span class="memory-tag correction">supersedes: ${payload.supersedes.slice(0, 8)}...</span>` : '';
+          
+          div.innerHTML = `
+            <div class="memory-content">"${payload.content || 'No content'}"</div>
+            <div class="memory-meta">
+              <span class="memory-tag ${kindClass}">${payload.kind || 'unknown'}</span>
+              ${payload.subject ? `<span class="memory-tag subject">about: ${payload.subject}</span>` : ''}
+              ${supersedes}
+              <span class="memory-tag">${new Date(memory.timestamp).toLocaleString()}</span>
+            </div>
+          `;
+          container.appendChild(div);
+        }
+      } catch (e) {
+        document.getElementById('memories-list').innerHTML = `<p class="error">Error loading memories: ${e.message}</p>`;
+      }
+    }
+
+    function showTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      // Update tab content
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.getElementById(`${tabName}-tab`).classList.add('active');
+    }
+
     function loadAll() {
       loadHealth();
       loadAgents();
       loadEvents();
+      loadMemories();
     }
 
     loadAll();
