@@ -5,6 +5,7 @@ import { agentRoutes } from './api/agents.js';
 import { eventRoutes } from './api/events.js';
 import { capabilityRoutes } from './api/capabilities.js';
 import { reputationRoutes } from './api/reputation.js';
+import { ownerRoutes } from './api/owners.js';
 import { createRateLimiter } from './middleware/ratelimit.js';
 import { closeDatabase } from './db/connection.js';
 
@@ -70,6 +71,7 @@ await fastify.register(agentRoutes, { prefix: '/api' });
 await fastify.register(eventRoutes, { prefix: '/api' });
 await fastify.register(capabilityRoutes, { prefix: '/api' });
 await fastify.register(reputationRoutes, { prefix: '/api' });
+await fastify.register(ownerRoutes, { prefix: '/api' });
 
 // Graceful shutdown
 const signals = ['SIGINT', 'SIGTERM'];

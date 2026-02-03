@@ -1,0 +1,25 @@
+# fly.toml - Trust Infrastructure
+
+app = 'trust-infra'
+primary_region = 'sjc'
+
+[build]
+  dockerfile = "packages/server/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  LOG_LEVEL = "info"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
