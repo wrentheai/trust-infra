@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, char, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { agents } from './agents.js';
 
 export const queryTypeEnum = pgEnum('query_type', ['specific', 'category', 'about']);
@@ -6,8 +6,8 @@ export const responseStatusEnum = pgEnum('response_status', ['answered', 'declin
 
 export const queryLog = pgTable('query_log', {
   id: uuid('id').primaryKey().defaultRandom(),
-  targetAgentId: uuid('target_agent_id').notNull().references(() => agents.agentId),
-  requesterAgentId: uuid('requester_agent_id').notNull(),
+  targetAgentId: char('target_agent_id', { length: 64 }).notNull().references(() => agents.agentId),
+  requesterAgentId: char('requester_agent_id', { length: 64 }).notNull(),
   requesterSignature: text('requester_signature').notNull(),
   
   // Query details

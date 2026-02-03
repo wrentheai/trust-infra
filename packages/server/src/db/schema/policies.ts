@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, char, boolean, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { owners } from './owners.js';
 
 export const defaultSharingEnum = pgEnum('default_sharing', ['allow_low', 'ask', 'deny_all']);
@@ -15,7 +15,7 @@ export const sharingPolicies = pgTable('sharing_policies', {
 export const trustedAgents = pgTable('trusted_agents', {
   id: uuid('id').primaryKey().defaultRandom(),
   policyId: uuid('policy_id').notNull().references(() => sharingPolicies.id, { onDelete: 'cascade' }),
-  trustedAgentId: uuid('trusted_agent_id').notNull(),
+  trustedAgentId: char('trusted_agent_id', { length: 64 }).notNull(),
   trustLevel: trustLevelEnum('trust_level').notNull().default('limited'),
   allowedCategories: text('allowed_categories').array(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
