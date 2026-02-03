@@ -1,0 +1,29 @@
+{
+  "name": "trust-infra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cryptographic trust infrastructure for AI agents",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "test:coverage": "npm run test:coverage -w @trust-infra/crypto",
+    "dev:server": "npm run dev -w @trust-infra/server",
+    "start:server": "npm run start -w @trust-infra/server",
+    "migrate": "npm run migrate -w @trust-infra/server",
+    "setup": "bash scripts/setup.sh",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

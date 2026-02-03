@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trust-infra-postgres
+    environment:
+      POSTGRES_DB: trust_infra
+      POSTGRES_USER: trust
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-trust_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/migrations
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trust"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trust-network
+
+  trust-service:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+    container_name: trust-infra-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgresql://trust:${DB_PASSWORD:-trust_dev_password}@postgres:5432/trust_infra
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key-change-in-production}
+      PORT: 3000
+      HOST: 0.0.0.0
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - trust-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  trust-network:
+    driver: bridge
